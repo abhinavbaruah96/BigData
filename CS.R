@@ -86,3 +86,105 @@ count(blank_street_address_2017) # 4009 Records.
 
 # Hence, we can see that 6055 records in 2015 file, 8274 in 2016 file and 4009 records in 2017 file dont have Stree Name 
 # and thus as per our initial assumption are parking tickets that dont have an address on them.
+
+#Aggregation tasks
+##################
+
+# The primary requirement is to do the analysis for all the 3 years and then compare the metrics across.
+# Hence, as a group we have decided that most of the data analysis will be done individually on each of the 3 files.
+#
+# 1.	How often does each violation code occur? (frequency of violation codes - find the top 5)
+violation_frequency_2015 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2015,`Violation Code`
+	                                  FROM Parking_2015_view 
+	                                GROUP BY `Violation Code`
+	                                ORDER BY COUNT(1) desc")
+head(violation_frequency_2015)
+#########################
+#   Total_Violations_2015 Violation Code                                          
+# 1               1630912             21
+# 2               1418627             38
+# 3                988469             14
+# 4                839197             36
+# 5                795918             37
+# 6                719753              7
+#########################
+
+# Similarly for 2016 and 2017 as well -
+
+violation_frequency_2016 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2016,`Violation Code`
+	                                  FROM Parking_2016_view 
+	                                GROUP BY `Violation Code`
+	                                ORDER BY COUNT(1) desc")
+head(violation_frequency_2016)
+
+#########################
+#   Total_Violations_2016 Violation Code                                          
+# 1               1531587             21
+# 2               1253512             36
+# 3               1143696             38
+# 4                875614             14
+# 5                686610             37
+# 6                611013             20
+#########################
+
+violation_frequency_2017 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2017,`Violation Code`
+	                                  FROM Parking_2017_view 
+	                                GROUP BY `Violation Code`
+	                                ORDER BY COUNT(1) desc")
+head(violation_frequency_2017)
+#########################
+#   Total_Violations_2017 Violation Code                                          
+# 1               1528588             21
+# 2               1400614             36
+# 3               1062304             38
+# 4                893498             14
+# 5                618593             20
+# 6                600012             46
+#########################
+
+####
+# 2.	How often does each vehicle body type get a parking ticket? How about the vehicle make? (find the top 5 for both)
+####
+
+violation_by_type_make_2015 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2015,`Vehicle Body Type`,`Vehicle Make`
+	                                  FROM Parking_2015_view 
+	                                GROUP BY `Vehicle Body Type`,`Vehicle Make`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_type_make_2015)
+#   Total_Violations_2015 Vehicle Body Type Vehicle Make                          
+# 1                654105               VAN         FORD
+# 2                557817              4DSD        TOYOT
+# 3                461886              4DSD        NISSA
+# 4                459878              4DSD        HONDA
+# 5                443357              SUBN        HONDA
+# 6                438078              SUBN        TOYOT
+violation_by_type_make_2016 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2016,`Vehicle Body Type`,`Vehicle Make`
+	                                  FROM Parking_2016_view 
+	                                GROUP BY `Vehicle Body Type`,`Vehicle Make`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_type_make_2016)
+#   Total_Violations_2016 Vehicle Body Type Vehicle Make                          
+# 1                584599               VAN         FORD
+# 2                520598              4DSD        TOYOT
+# 3                429120              SUBN        TOYOT
+# 4                421460              SUBN        HONDA
+# 5                420642              4DSD        HONDA
+# 6                412884              4DSD        NISSA
+
+violation_by_type_make_2017 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2016,`Vehicle Body Type`,`Vehicle Make`
+	                                  FROM Parking_2017_view 
+	                                GROUP BY `Vehicle Body Type`,`Vehicle Make`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_type_make_2017)
+#   Total_Violations_2016 Vehicle Body Type Vehicle Make                          
+# 1                543683              4DSD        TOYOT
+# 2                535545               VAN         FORD
+# 3                460332              SUBN        TOYOT
+# 4                453586              4DSD        HONDA
+# 5                448744              SUBN        HONDA
+# 6                443074              4DSD        NISSA
+
+# 3.	A precinct is a police station that has a certain zone of the city under its command. Find the (5 highest) frequencies of:
+#     1.	Violating Precincts (this is the precinct of the zone where the violation occurred). Using this, can you make any insights for parking violations in any specific areas of the city? 
+#     2.	Issuing Precincts (this is the precinct that issued the ticket)
+
