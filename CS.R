@@ -1,13 +1,26 @@
 Sys.setenv(SPARK_HOME = "/usr/local/spark")
 library(SparkR, lib.loc = c(file.path(Sys.getenv("SPARK_HOME"), "R", "lib")))
 sparkR.session(master = "yarn")
-Parking_2015 <- SparkR::read.df("/common_folder/nyc_parking/Parking_Violation_Issued_-_Fiscal_Year_2015.csv", header=T, "csv")
+Parking_2015 <- SparkR::read.df("/common_folder/nyc_parking/Parking_Violations_Issued_-_Fiscal_Year_2015.csv", header=T, "csv")
 Parking_2016 <- SparkR::read.df("/common_folder/nyc_parking/Parking_Violations_Issued_-_Fiscal_Year_2016.csv", header=T, "csv")
 Parking_2017 <- SparkR::read.df("/common_folder/nyc_parking/Parking_Violations_Issued_-_Fiscal_Year_2017.csv", header=T, "csv")
 # As a next step, lets validate the number of records in each of the 3 files.
 count(Parking_2015) #11809233
 count(Parking_2016) #10626899
 count(Parking_2017) #10803028
+# Next lets check the number of columns - 
+ncol(Parking_2015) # 51 columns
+ncol(Parking_2016) # 51 columns
+ncol(Parking_2017) # 43 columns - this dataset is different than the other 2. The last 8 columns - present in 2015 and 2016
+                   # is not present in this file.
+#Create views
+createOrReplaceTempView(Parking_2015, "Parking_2015_view")
+createOrReplaceTempView(Parking_2016, "Parking_2016_view")
+createOrReplaceTempView(Parking_2017, "Parking_2017_view")
+
+# Since the analysis is to be done for the 3 years, we chose the fiscal year as per the files for the analysis (as 
+# mentioned in the guidelines) and ran the scripts/queries for each of the files separately in most cases.
+
 # Examine the data
 ###################
 #1.	Find total number of tickets for each year.
@@ -187,4 +200,197 @@ head(violation_by_type_make_2017)
 # 3.	A precinct is a police station that has a certain zone of the city under its command. Find the (5 highest) frequencies of:
 #     1.	Violating Precincts (this is the precinct of the zone where the violation occurred). Using this, can you make any insights for parking violations in any specific areas of the city? 
 #     2.	Issuing Precincts (this is the precinct that issued the ticket)
+violation_by_Precinct_2015 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2015,`Violation Precinct`
+	                                  FROM Parking_2015_view 
+	                                GROUP BY `Violation Precinct`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_Precinct_2015)
+#   Total_Violations_2015 Violation Precinct                                      
+# 1               1799170                  0 - most of the violations.
+# 2                598351                 19
+# 3                427510                 18
+# 4                409064                 14
+# 5                329009                  1
+# 6                320963                114
+
+# Similarly for 2016 and 2017
+
+violation_by_Precinct_2016 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2016,`Violation Precinct`
+	                                  FROM Parking_2016_view 
+	                                GROUP BY `Violation Precinct`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_Precinct_2016)
+
+#   Total_Violations_2016 Violation Precinct                                      
+# 1               1868655                  0 - most of the violations.
+# 2                554465                 19
+# 3                331704                 18
+# 4                324467                 14
+# 5                303850                  1
+# 6                291336                114
+
+violation_by_Precinct_2017 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2017,`Violation Precinct`
+	                                  FROM Parking_2017_view 
+	                                GROUP BY `Violation Precinct`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_Precinct_2017)
+#   Total_Violations_2017 Violation Precinct                                      
+# 1               2072400                  0 - most of the violations.
+# 2                535671                 19
+# 3                352450                 14
+# 4                331810                  1
+# 5                306920                 18
+# 6                296514                114
+
+#Similar analysis can be done for issuing Precinct -
+violation_by_Issuer_Precinct_2015 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2015,`Issuer Precinct`
+	                                  FROM Parking_2015_view 
+	                                GROUP BY `Issuer Precinct`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_Issuer_Precinct_2015)
+#   Total_Violations_2015 Issuer Precinct                                         
+# 1               2037745               0
+# 2                579998              19
+# 3                417329              18
+# 4                392922              14
+# 5                318778               1
+# 6                314437             114
+
+
+violation_by_Issuer_Precinct_2016 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2016,`Issuer Precinct`
+	                                  FROM Parking_2016_view 
+	                                GROUP BY `Issuer Precinct`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_Issuer_Precinct_2016)
+#   Total_Violations_2016 Issuer Precinct                                         
+# 1               2140274               0
+# 2                540569              19
+# 3                323132              18
+# 4                315311              14
+# 5                295013               1
+# 6                286924             114
+
+violation_by_Issuer_Precinct_2017 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2017,`Issuer Precinct`
+	                                  FROM Parking_2017_view 
+	                                GROUP BY `Issuer Precinct`
+	                                ORDER BY COUNT(1) desc")
+head(violation_by_Issuer_Precinct_2017)
+#   Total_Violations_2017 Issuer Precinct                                         
+# 1               2388479               0
+# 2                521513              19
+# 3                344977              14
+# 4                321170               1
+# 5                296553              18
+# 6                289950             114
+
+# 4.	Find the violation code frequency across 3 precincts which have issued the most number of tickets - 
+# do these precinct zones have an exceptionally high frequency of certain violation codes? 
+# Are these codes common across precincts?
+
+# For year 2015 and 2016 - Issuer Precincts (top 3) are same - 0, 19 and 18. For 2017, it is 0,19 and 14. 
+# We can see that 0 and 19 are common across the 3 years.
+# Now lets see what are the top violation codes in each of these top Precincts (that have issued highest tickets)
+
+violation_by_code_Issuer_Precinct_2015 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2015,`Violation Code`,
+	                                                   `Issuer Precinct`
+	                                  FROM Parking_2015_view 
+	                                 WHERE `Issuer Precinct` in ('0','19','18') 
+	                                GROUP BY `Violation Code`,`Issuer Precinct`
+	                                ORDER BY COUNT(1) desc,`Issuer Precinct`")
+# Lets check the top 10 violoation codes for year 2015 for the top issuing precincts - 0,19 and 18
+head(violation_by_code_Issuer_Precinct_2015,10)
+#    Total_Violations_2015 Violation Code Issuer Precinct                         
+# 1                 839197             36               0
+# 2                 719745              7               0
+# 3                 224516              5               0
+# 4                 211975             21               0
+# 5                 129079             14              18
+# 6                  97154             38              19
+# 7                  85007             37              19
+# 8                  64133             14              19
+# 9                  60618             69              18
+# 10                 60215             21              19
+
+# Similarly for 2016 and 2017 
+violation_by_code_Issuer_Precinct_2016 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2016,`Violation Code`,
+	                                                   `Issuer Precinct`
+	                                  FROM Parking_2016_view 
+	                                 WHERE `Issuer Precinct` in ('0','19','18') 
+	                                GROUP BY `Violation Code`,`Issuer Precinct`
+	                                ORDER BY COUNT(1) desc,`Issuer Precinct`")
+# Lets check the top 10 violoation codes for year 2016 for the top issuing precincts - 0,19 and 18
+head(violation_by_code_Issuer_Precinct_2016,10)
+#    Total_Violations_2016 Violation Code Issuer Precinct                         
+# 1                1253511             36               0
+# 2                 492469              7               0
+# 3                 237174             21               0
+# 4                 112376              5               0
+# 5                  99857             14              18
+# 6                  77183             38              19
+# 7                  75641             37              19
+# 8                  73016             46              19
+# 9                  61742             14              19
+# 10                 58719             21              19
+# For 2017, it is 0,19 and 14. 
+violation_by_code_Issuer_Precinct_2017 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_2017,`Violation Code`,
+	                                                   `Issuer Precinct`
+	                                  FROM Parking_2017_view 
+	                                 WHERE `Issuer Precinct` in ('0','19','14') 
+	                                GROUP BY `Violation Code`,`Issuer Precinct`
+	                                ORDER BY COUNT(1) desc,`Issuer Precinct`")
+# Lets check the top 10 violoation codes for year 2017 for the top issuing precincts - 0,19 and 14
+head(violation_by_code_Issuer_Precinct_2017,10)
+#    Total_Violations_2017 Violation Code Issuer Precinct                         
+# 1                1400614             36               0
+# 2                 516389              7               0
+# 3                 268591             21               0
+# 4                 145642              5               0
+# 5                  86390             46              19
+# 6                  73837             14              14
+# 7                  72437             37              19
+# 8                  72344             38              19
+# 9                  58026             69              14
+# 10                 57563             14              19
+
+#############
+# OBSERVATION - We can see that Violation codes 36(highest) and 7 are the most common across the 3 years.
+#############
+
+####################################
+#For further Analysis, we are going to merge the 3 files, since all requirements can be achieved by merged data.
+# No need to repeat the queries for each year as we are concentrating on the whole data in the below scripts.
+####################################
+Parking_2015 <- Parking_2015[,1:43] # Only picking first 43 columns - since 2017 file doesnt have the last 8 (last 8 columns seem insignficant)
+Parking_2016 <- Parking_2016[,1:43]
+Parking_All <- union(Parking_2015,Parking_2016)
+Parking_All <- union(Parking_All, Parking_2017)
+count(Parking_All) # Validate to see count matches the sum of the 3 files.It is [1] 33239160
+# 11809233 + 10626899 + 10803028 = 33239160, matches the sum of the 3 files.
+
+# Now, lets remove duplicates on Summons Number - there are duplicates across the 3 files as well.
+Parking_All <- dropDuplicates(Parking_All, 'Summons Number')
+count(Parking_All) # 32156308 records.
+
+# Going forward, all the remaining analysis will be done on the merged file since we need to perform analaysis for times of day / seasons etc..
+
+# 5.	You’d want to find out the properties of parking violations across different times of the day:
+# o	The Violation Time field is specified in a strange format. 
+#   Find a way to make this into a time attribute that you can use to divide into groups.
+# o	Find a way to deal with missing values, if any.
+# o	Divide 24 hours into 6 equal discrete bins of time. 
+#   The intervals you choose are at your discretion. For each of these groups, 
+#   find the 3 most commonly occurring violations
+# o	Now, try another direction. For the 3 most commonly occurring violation codes, 
+#   find the most common times of day (in terms of the bins from the previous part)
+
+# All the above can be achieved by adding a new column which can take 7 values - >0000 to <=0400 - 12to4_AM, 
+# k4000 to <=0800 - 3to6AM and so on till >2000 to <=0000 - 8to12AM
+
+createOrReplaceTempView(Parking_All,"Parking_All_view")
+mising_Violation_time_Parking_All <- SparkR::sql("SELECT count(`Summons Number`) 
+	                                                FROM Parking_All_view
+	                                               WHERE `Violation Time` is NULL")
+head(mising_Violation_time_Parking_All) # 3084 records have null timestamp - this is very less compared to the dataset size.
+# Lets group them into a different (Seventh) bucket.
+
 
