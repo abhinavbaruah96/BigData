@@ -383,9 +383,6 @@ count(Parking_All) # 32156308 records.
 # o	Now, try another direction. For the 3 most commonly occurring violation codes, 
 #   find the most common times of day (in terms of the bins from the previous part)
 
-# All the above can be achieved by adding a new column which can take 7 values - >0000 to <=0400 - 12to4_AM, 
-# k4000 to <=0800 - 3to6AM and so on till >2000 to <=0000 - 8to12AM
-
 createOrReplaceTempView(Parking_All,"Parking_All_view")
 mising_Violation_time_Parking_All <- SparkR::sql("SELECT count(`Summons Number`) 
 	                                                FROM Parking_All_view
@@ -393,4 +390,107 @@ mising_Violation_time_Parking_All <- SparkR::sql("SELECT count(`Summons Number`)
 head(mising_Violation_time_Parking_All) # 3084 records have null timestamp - this is very less compared to the dataset size.
 # Lets group them into a different (Seventh) bucket.
 
+#
 
+# Lets answer this -  o	Divide 24 hours into 6 equal discrete bins of time. #
+#   The intervals you choose are at your discretion. For each of these groups, 
+#   find the 3 most commonly occurring violations
+
+
+Three_Most_Comm_Viol_by_Time <- SparkR::sql(
+     "
+     SELECT timezone, `Violation Code`, Totals, RowNum FROM
+     (SELECT timezone, `Violation Code`, Totals, row_number() OVER (PARTITION BY timezone ORDER BY timezone) RowNum FROM (
+        SELECT timezone,`Violation Code`,Count(1) Totals
+  	       FROM (
+  	                SELECT `Violation Code`,
+  	                CASE  
+                          WHEN substr(`Violation Time`,1,2) in ('00','01','02','03','12') AND substr(`Violation Time`,5,1) = 'A' THEN '0-4' 
+                          WHEN substr(`Violation Time`,1,2) in ('04','05','06','07') AND substr(`Violation Time`,5,1) = 'A' THEN '4-8' 
+                          WHEN substr(`Violation Time`,1,2) in ('08','09','10','11') AND substr(`Violation Time`,5,1) = 'A' THEN '8-12' 
+                          WHEN substr(`Violation Time`,1,2) in ('00','01','02','03','12') AND substr(`Violation Time`,5,1) = 'P' THEN '12-16' 
+                          WHEN substr(`Violation Time`,1,2) in ('04','05','06','07') AND substr(`Violation Time`,5,1) = 'P' THEN '16-20' 
+                          WHEN substr(`Violation Time`,1,2) in ('08','09','10','11') AND substr(`Violation Time`,5,1) = 'P' THEN '20-24' 
+                          ELSE 'OTHERS'
+                      END as timezone from Parking_All_view
+                 ) 
+            GROUP BY timezone,`Violation Code`
+            ORDER BY timezone,Totals desc
+         )
+     )    
+     WHERE RowNum < 4
+     ORDER BY timezone, RowNum"
+ )
+
+head(Three_Most_Comm_Viol_by_Time,7*3) # Since there are 7 timezones and we want top 3 from each.
+# ############
+#    timezone Violation Code  Totals RowNum                                       
+# 1       0-4              7   82791      1
+# 2       0-4             20   71149      2
+# 3       0-4             85   56295      3
+# 4     12-16             16  224951      1
+# 5     12-16             31  209735      2
+# 6     12-16             42  142145      3
+# 7     16-20             46  235755      1
+# 8     16-20              5  203880      2
+# 9     16-20             71  191695      3
+# 10    20-24             19   54578      1
+# 11    20-24             37   49082      2
+# 12    20-24             71   33950      3
+# 13      4-8             74   41602      1
+# 14      4-8             16   40411      2
+# 15      4-8             24   38132      3
+# 16     8-12             36 1689822      1
+# 17     8-12             38 1177575      2
+# 18     8-12             14  843684      3
+# 19   OTHERS             40     155      1
+# 20   OTHERS             14     151      2
+# 21   OTHERS             20     130      3
+# ############
+
+# FINALLY, 
+# o	Now, try another direction. For the 3 most commonly occurring violation codes, 
+#   find the most common times of day (in terms of the bins from the previous part)
+
+Three_most_Comm_Violations <- SparkR::sql("SELECT `Violation Code`, Count(1)
+	                                                FROM Parking_All_view
+	                                               GROUP BY `Violation Code`
+	                                               ORDER BY Count(1) desc")
+head(Three_most_Comm_Violations,3)
+
+# Lets use the 3 common violations to find the 3 common times of day.
+
+Three_most_common_times <- SparkR::sql("SELECT `Violation Code`,
+ 	                CASE  
+                         WHEN substr(`Violation Time`,1,2) in ('00','01','02','03','12') AND substr(`Violation Time`,5,1) = 'A' THEN '0-4' 
+                         WHEN substr(`Violation Time`,1,2) in ('04','05','06','07') AND substr(`Violation Time`,5,1) = 'A' THEN '4-8' 
+                         WHEN substr(`Violation Time`,1,2) in ('08','09','10','11') AND substr(`Violation Time`,5,1) = 'A' THEN '8-12' 
+                         WHEN substr(`Violation Time`,1,2) in ('00','01','02','03','12') AND substr(`Violation Time`,5,1) = 'P' THEN '12-16' 
+                         WHEN substr(`Violation Time`,1,2) in ('04','05','06','07') AND substr(`Violation Time`,5,1) = 'P' THEN '16-20' 
+                         WHEN substr(`Violation Time`,1,2) in ('08','09','10','11') AND substr(`Violation Time`,5,1) = 'P' THEN '20-24' 
+                         ELSE 'OTHERS'
+                     END as timezone, Count(1) Totals from Parking_All_view where `Violation Code` in ('21','38','36')
+                     GROUP BY timezone,`Violation Code` 
+                     ORDER BY Totals desc")
+
+head(Three_most_common_times,10)
+#####
+# Most common times for violoations are -
+# 8-12, 12-16 and 16-20
+#    Violation Code timezone  Totals                                              
+# 1              21     8-12 3558528
+# 2              36     8-12 1689822
+# 3              38    12-16 1511768
+# 4              36    12-16 1448470
+# 5              38     8-12 1177569
+# 6              38    16-20  653293
+# 7              21    12-16  413308
+# 8              21      4-8  337373
+# 9              21      0-4  215346
+# 10             36      4-8  168146
+#####
+
+
+# 1.	Let’s try and find some seasonality in this data
+# o	First, divide the year into some number of seasons, and find frequencies of tickets for each season.
+# o	Then, find the 3 most common violations for each of these season
