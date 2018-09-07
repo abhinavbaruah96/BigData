@@ -114,12 +114,12 @@ violation_frequency_2015 <- SparkR::sql("SELECT COUNT(1) as Total_Violations_201
 head(violation_frequency_2015)
 #########################
 #   Total_Violations_2015 Violation Code                                          
-# 1               1630912             21
-# 2               1418627             38
-# 3                988469             14
-# 4                839197             36
-# 5                795918             37
-# 6                719753              7
+# 1               1630912             21 - Street Cleaning
+# 2               1418627             38 - Muni Meter (No receipt on windshield)
+# 3                988469             14 - General no standing ticket
+# 4                839197             36 - Speed limit exceeded
+# 5                795918             37 - Muni Meter (Excess of allowed time)
+# 6                719753              7 - Red light ticket
 #########################
 
 # Similarly for 2016 and 2017 as well -
@@ -371,7 +371,8 @@ count(Parking_All) # Validate to see count matches the sum of the 3 files.It is 
 Parking_All <- dropDuplicates(Parking_All, 'Summons Number')
 count(Parking_All) # 32156308 records.
 
-# Going forward, all the remaining analysis will be done on the merged file since we need to perform analaysis for times of day / seasons etc..
+# Going forward, all the remaining analysis will be done on the merged file since we need to perform analaysis for 
+# times of day / seasons etc (these need not be focused on year wise as earlier results but rather combined data)..
 
 # 5.	You’d want to find out the properties of parking violations across different times of the day:
 # o	The Violation Time field is specified in a strange format. 
@@ -397,6 +398,7 @@ head(mising_Violation_time_Parking_All) # 3084 records have null timestamp - thi
 #   find the 3 most commonly occurring violations
 
 
+# We are using ROW over partition to identify the row count for each timezone, so that we can pick the top 3 later in the query.
 Three_Most_Comm_Viol_by_Time <- SparkR::sql(
      "
      SELECT timezone, `Violation Code`, Totals, RowNum FROM
@@ -494,3 +496,117 @@ head(Three_most_common_times,10)
 # 1.	Let’s try and find some seasonality in this data
 # o	First, divide the year into some number of seasons, and find frequencies of tickets for each season.
 # o	Then, find the 3 most common violations for each of these season
+
+# We are dividing the seasons in 4 quarters - Q1 being Jan to Mar and So on.
+Season_wise_tickets <- SparkR::sql("SELECT 
+ 	                CASE  
+                         WHEN substr(`Issue Date`,1,2) in ('01','02','03') THEN 'Q1'
+                         WHEN substr(`Issue Date`,1,2) in ('04','05','06') THEN 'Q2' 
+                         WHEN substr(`Issue Date`,1,2) in ('07','08','09') THEN 'Q3'
+                         WHEN substr(`Issue Date`,1,2) in ('10','11','12') THEN 'Q4'
+                         ELSE 'Unkown_Qtr'
+                     END as Season, Count(1) Total_Tickets 
+                     FROM Parking_All_view
+                     GROUP BY Season 
+                     ORDER BY Total_Tickets desc")
+
+#########
+#   Season Total_Tickets                                                          
+# 1     Q2       8473085
+# 2     Q3       7981154
+# 3     Q4       7885169
+# 4     Q1       7816900
+#########
+
+# Similar to how we performed the timezone extract, we use ROW over command to identify the 3 most common violations for each of the 4 seasons.
+
+Season_wise_Top3_tickets <- SparkR::sql(
+     "
+     SELECT Season, `Violation Code`, Totals, RowNum FROM
+     (SELECT Season, `Violation Code`, Totals, row_number() OVER (PARTITION BY Season ORDER BY Season) RowNum FROM (
+        SELECT Season,`Violation Code`,Count(1) Totals
+  	       FROM (
+  	                SELECT `Violation Code`,
+  	                CASE 
+                         WHEN substr(`Issue Date`,1,2) in ('01','02','03') THEN 'Q1'
+                         WHEN substr(`Issue Date`,1,2) in ('04','05','06') THEN 'Q2' 
+                         WHEN substr(`Issue Date`,1,2) in ('07','08','09') THEN 'Q3'
+                         WHEN substr(`Issue Date`,1,2) in ('10','11','12') THEN 'Q4'
+                         ELSE 'Unkown_Qtr'
+                      END as Season from Parking_All_view
+                 ) 
+            GROUP BY Season,`Violation Code`
+            ORDER BY Season,Totals desc
+         )
+     )    
+     WHERE RowNum < 4
+     ORDER BY Season, RowNum"
+ )
+
+head(Season_wise_Top3_tickets,3*4) # Top 3 in each of the 4 seasons (3*4) 
+
+# ####
+#    Season Violation Code  Totals RowNum                                         
+# 1      Q1             21 1005014      1
+# 2      Q1             38  932604      2
+# 3      Q1              5   87974      3
+# 4      Q2             71  395272      1
+# 5      Q2             40  380866      2
+# 6      Q2             48   59093      3
+# 7      Q3             19  224943      1
+# 8      Q3             69  191929      2
+# 9      Q3             50   65344      3
+# 10     Q4             21 1127731      1
+# 11     Q4             36 1052458      2
+# 12     Q4             46  402883      3
+#
+# Not much trend except that violation code 21 (No parking when stree cleaning) is common for Q1 and Q4, makes sense
+# since its colder during those months and more street cleaning (Snow removal) would happen
+#
+# ####
+
+# 2.	The fines collected from all the parking violation constitute a revenue source for the NYC police department. Let’s take an example of estimating that for the 3 most commonly occurring codes.
+# o	Find total occurrences of the 3 most common violation codes
+
+head(Three_most_Comm_Violations,3) # We determined this already earlier, just re-using it here.
+
+#   Violation Code count(1)                                                       
+# 1             21  4528307
+# 2             38  3513534
+# 3             36  3395137
+
+# o	Then, search the internet for NYC parking violation code fines. You will find a website (on the nyc.gov URL) that 
+#   lists these fines. They’re divided into two categories, one for the highest-density locations of the city, 
+#   the other for the rest of the city. For simplicity, take an average of the two.
+
+# For 21 it is - (65+45)/2 = 55$
+# For 36 it is - (50+50)/2 = 50$
+# For 38 it is - (65+35)/2 = 50$
+
+# o	Using this information, find the total amount collected for all of the fines. State the code which has the highest total collection.
+Fine_for_top3_viol_by_Freq <- SparkR::sql("SELECT `Violation Code`,Totals*Fine_by_type TotalFine
+	                                         FROM
+	                                        (
+	                                          SELECT `Violation Code`, Count(1) Totals,
+							  	                      CASE 
+							                             WHEN `Violation Code` = '21' THEN 55
+							                             WHEN `Violation Code` = '36' THEN 50
+							                             WHEN `Violation Code` = '38' THEN 50
+							                             ELSE 'NA'
+							                          END as Fine_by_type	                                          
+	                                            FROM Parking_All_view
+	                                           WHERE `Violation Code` in ('21','36','38')
+	                                           GROUP BY `Violation Code`
+	                                        )
+	                                        ORDER BY TotalFine desc"
+	                                      )
+head(Fine_for_top3_viol_by_Freq)
+#   Violation Code TotalFine  
+# 1             21 249,053,310                                                    
+# 2             38 175,676,550
+# 3             36 169,756,850
+
+# o	What can you intuitively infer from these findings?
+# We can infer that just for these 3 fine types (Street Cleaning(No parking), Receipt tag missing on windshield, Speed limit),
+# the total fine collected over the 3 years is almost close to 600 million USD with no parking during Street Cleaning 
+# being the max (Tickets probably issued for parked cars during snow cleaning in NYC).
